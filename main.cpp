@@ -112,7 +112,7 @@ static Matrix numerical_jacobian(const SystemFunction &f, const Vector &x)
     for (int j = 0; j < n; ++j)
     {
         Vector x_step = x;
-        x_step[j] += JACOBIAN_STEP; 
+        x_step[j] += JACOBIAN_STEP;
 
         Vector fx_step = f(x_step);
 
@@ -147,7 +147,8 @@ static solver_result solve_newton_system(const SystemFunction &f, const Vector &
             res.status = solver_status::CONVERGED;
             res.iterations_taken = iter;
             res.residuals = f_val;
-            for(auto& r : res.residuals) r = std::abs(r);
+            for (auto &r : res.residuals)
+                r = std::abs(r);
             res.max_res = max_res;
             return res;
         }
@@ -164,7 +165,8 @@ static solver_result solve_newton_system(const SystemFunction &f, const Vector &
             res.status = solver_status::STAGNATION_DETECTED;
             res.iterations_taken = iter;
             res.residuals = f_val;
-            for(auto& r : res.residuals) r = std::abs(r);
+            for (auto &r : res.residuals)
+                r = std::abs(r);
             res.max_res = max_res;
             return res;
         }
@@ -175,7 +177,8 @@ static solver_result solve_newton_system(const SystemFunction &f, const Vector &
             res.status = solver_status::DIVERGENCE_DETECTED;
             res.iterations_taken = iter;
             res.residuals = f_val;
-            for(auto& r : res.residuals) r = std::abs(r);
+            for (auto &r : res.residuals)
+                r = std::abs(r);
             res.max_res = max_res;
             return res;
         }
@@ -204,7 +207,8 @@ static solver_result solve_newton_system(const SystemFunction &f, const Vector &
             res.status = solver_status::SINGULAR_JACOBIAN;
             res.iterations_taken = iter;
             res.residuals = f_val;
-            for(auto& r : res.residuals) r = std::abs(r);
+            for (auto &r : res.residuals)
+                r = std::abs(r);
             res.max_res = max_res;
             return res;
         }
@@ -213,7 +217,8 @@ static solver_result solve_newton_system(const SystemFunction &f, const Vector &
     res.status = solver_status::ITERATION_BUDGET_EXHAUSTED;
     res.iterations_taken = MAX_ITER_HARD_CAP;
     res.residuals = f(res.X);
-    for(auto& r : res.residuals) r = std::abs(r);
+    for (auto &r : res.residuals)
+        r = std::abs(r);
     res.max_res = compute_max_residual(res.residuals);
     return res;
 }
@@ -295,7 +300,6 @@ Vector system_2(const Vector &vars)
         11 * x + 7 * y * y * y + 33
     };
 }
-
 
 int main()
 {
