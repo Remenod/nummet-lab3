@@ -5,6 +5,9 @@
 #include <stdexcept>
 #include <iomanip>
 #include <string>
+#include <memory>
+
+#include "lib/tinyexpr.h"
 
 using Vector = std::vector<double>;
 using Matrix = std::vector<std::vector<double>>;
@@ -261,16 +264,13 @@ static void print_solver_status(solver_status code, int iter)
 }
 
 // Output helper for the roots and residuals
-static void print_results(const solver_result &res)
+static void print_results(const solver_result &res, const std::vector<std::string> &var_names)
 {
     std::cout << "\nResults:\n";
     for (size_t i = 0; i < res.X.size(); i++)
     {
-        // Variables usually named x, y, z...
-        char var_name = static_cast<char>('x' + i);
-        if (i > 2) var_name = '?'; // fallback for n > 3
-
-        std::cout << var_name << " = " << std::fixed << std::setprecision(8) << res.X[i]
+        std::string v_name = (i < var_names.size()) ? var_names[i] : "var" + std::to_string(i);
+        std::cout << v_name << " = " << std::fixed << std::setprecision(8) << res.X[i]
                   << "\033[90m"
                   << "  (|f|: " << std::scientific << res.residuals[i] << ")\n"
                   << "\033[0m";
@@ -280,46 +280,123 @@ static void print_results(const solver_result &res)
               << "\033[0m";
 }
 
-
-// --- Hardcoded Systems for Selection ---
-
-Vector system_1(const Vector &vars)
+static void print_expression_error(const std::string &expr, int err)
 {
-    double x = vars[0], y = vars[1];
-    return {
-        x * x - 2 * x - y + 0.5,
-        x * x + 4 * y * y - 4
-    };
+    std::string spaces(err - 1, ' ');
+    std::cerr << "\033[31m"
+              << "\nAn error occurred while parsing expression\n"
+              << expr << "\n"
+              << spaces << "^"
+              << "\033[0m\n";
 }
 
-Vector system_2(const Vector &vars)
+// Parses multiple expressions and binds them to tinyexpr variables
+static SystemFunction build_dynamic_system(const std::vector<std::string> &expr_strs, int n, std::vector<std::string> &out_var_names, int &err_idx, int &err_pos)
 {
-    double x = vars[0], y = vars[1];
-    return {
-        4 * x + 11 * y * y,
-        11 * x + 7 * y * y * y + 33
+    // Shared state to hold variable values during evaluation
+    auto vars_state = std::make_shared<std::vector<double>>(n, 0.0);
+
+    // Create standard names (x, y, z) for 3 vars, or x1, x2... for more
+    std::vector<te_variable> te_vars;
+    out_var_names.clear();
+
+    for (int i = 0; i < n; ++i)
+    {
+        if (i == 0)
+            out_var_names.push_back("x");
+        else if (i == 1)
+            out_var_names.push_back("y");
+        else if (i == 2)
+            out_var_names.push_back("z");
+        else
+            out_var_names.push_back("x" + std::to_string(i + 1));
+
+        // Bind the memory address of our shared state to tinyexpr
+        te_vars.push_back({out_var_names.back().c_str(), &(*vars_state)[i], TE_VARIABLE, nullptr});
+    }
+
+    std::vector<std::shared_ptr<te_expr>> compiled_exprs;
+    err_idx = -1;
+
+    // Compile each expression
+    for (int i = 0; i < n; ++i)
+    {
+        int err = 0;
+        te_expr *e_raw = te_compile(expr_strs[i].c_str(), te_vars.data(), te_vars.size(), &err);
+
+        if (err)
+        {
+            err_idx = i;
+            err_pos = err;
+            return {};
+        }
+
+        compiled_exprs.push_back(std::shared_ptr<te_expr>(e_raw, [](te_expr *ptr)
+                                                          { te_free(ptr); }));
+    }
+
+    // Return the capturing lambda that acts as our SystemFunction
+    return [compiled_exprs, vars_state](const Vector &x) -> Vector
+    {
+        Vector result(x.size());
+
+        // Update the bound variables before evaluation
+        for (size_t i = 0; i < x.size(); ++i)
+        {
+            (*vars_state)[i] = x[i];
+        }
+
+        // Evaluate each tinyexpr expression
+        for (size_t i = 0; i < compiled_exprs.size(); ++i)
+        {
+            result[i] = te_eval(compiled_exprs[i].get());
+        }
+        return result;
     };
 }
 
 int main()
 {
-    std::cout << "Select Non-Linear System to solve:\n"
-              << "1. { x^2 - 2x - y + 0.5 = 0,   x^2 + 4y^2 - 4 = 0 }\n"
-              << "2. { 4x + 11y^2 = 0,           11x + 7y^3 + 33 = 0 }\n"
-              << "> ";
-              
-    int choice;
-    if (!(std::cin >> choice) || (choice != 1 && choice != 2))
+    int n;
+    std::cout << "Enter number of variables in the system:\n> ";
+    if (!(std::cin >> n) || n <= 0)
     {
-        std::cerr << "Invalid choice.\n";
+        std::cerr << "Invalid number of variables.\n";
         return 1;
     }
 
-    SystemFunction target_function = (choice == 1) ? system_1 : system_2;
-    int n = 2; // Both systems are 2D
-    
+    // Clear input buffer before getline
+    std::cin.ignore(10000, '\n');
+
+    std::vector<std::string> expressions(n);
+    std::cout << "\nEnter " << n << " expressions (Variables: ";
+    for (int i = 0; i < n; i++)
+    {
+        std::cout << ((i == 0) ? "x" : (i == 1) ? ", y"
+                                   : (i == 2)   ? ", z"
+                                                : ", x" + std::to_string(i + 1));
+    }
+    std::cout << ")\n";
+
+    for (int i = 0; i < n; i++)
+    {
+        std::cout << "Eq " << i + 1 << ": ";
+        std::getline(std::cin, expressions[i]);
+    }
+
+    int err_idx = -1, err_pos = 0;
+    std::vector<std::string> var_names;
+
+    auto target_function = build_dynamic_system(expressions, n, var_names, err_idx, err_pos);
+
+    if (err_idx != -1)
+    {
+        print_expression_error(expressions[err_idx], err_pos);
+        return 1;
+    }
+
     Vector guess(n);
-    std::cout << "\nEnter " << n << " initial guess values (e.g. for x and y separated by space):\n> ";
+    std::cout << "\nEnter " << n << " initial guess values (separated by space):\n> ";
     for (int i = 0; i < n; i++)
     {
         std::cin >> guess[i];
@@ -335,10 +412,9 @@ int main()
 
     print_solver_status(res.status, res.iterations_taken);
 
-    // Print results only if we have a valid or partially valid solution
     if (res.status == solver_status::CONVERGED || res.status == solver_status::ITERATION_BUDGET_EXHAUSTED || res.status == solver_status::STAGNATION_DETECTED)
     {
-        print_results(res);
+        print_results(res, var_names);
     }
 
     return (res.status == solver_status::CONVERGED) ? 0 : 1;
