@@ -310,9 +310,12 @@ static SystemFunction build_dynamic_system(const std::vector<std::string> &expr_
             out_var_names.push_back("z");
         else
             out_var_names.push_back("x" + std::to_string(i + 1));
+    }
 
-        // Bind the memory address of our shared state to tinyexpr
-        te_vars.push_back({out_var_names.back().c_str(), &(*vars_state)[i], TE_VARIABLE, nullptr});
+    std::vector<te_variable> te_vars;
+    for (int i = 0; i < n; ++i)
+    {
+        te_vars.push_back({out_var_names[i].c_str(), &(*vars_state)[i], TE_VARIABLE, nullptr});
     }
 
     std::vector<std::shared_ptr<te_expr>> compiled_exprs;
