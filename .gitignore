@@ -1,2 +1,7 @@
-/main
-/relax
+*
+!*.*
+!*/
+!Makefile
+.vscode
+*.o
+build/
