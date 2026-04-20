@@ -312,7 +312,6 @@ static SystemFunction build_dynamic_system(const std::vector<std::string> &expr_
             out_var_names.push_back("x" + std::to_string(i + 1));
     }
 
-    std::vector<te_variable> te_vars;
     for (int i = 0; i < n; ++i)
     {
         te_vars.push_back({out_var_names[i].c_str(), &(*vars_state)[i], TE_VARIABLE, nullptr});
